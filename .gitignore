@@ -1,0 +1,6 @@
+/target
+.idea/
+.DS_Store
+*.iml
+Rakefile
+/neo4j
