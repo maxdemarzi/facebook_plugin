@@ -15,7 +15,7 @@ public class FacebookPluginTest {
     private static final String MY_ACCESS_TOKEN = "MYTOKEN";
 
     @Test
-    public void getUser() throws Exception{
+    public void getUserTest() throws Exception{
 
         FacebookClient facebookClient = new DefaultFacebookClient(MY_ACCESS_TOKEN,
 
@@ -37,4 +37,6 @@ public class FacebookPluginTest {
         assert "tester".equals(user.getUsername());
 
     }
+
+
 }

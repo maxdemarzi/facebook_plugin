@@ -12,6 +12,7 @@
         <neo4jVersion>2.0.1</neo4jVersion>
         <restfbVersion>1.6.14</restfbVersion>
         <junitVersion>4.11</junitVersion>
+        <guavaVersion>16.0.1</guavaVersion>
     </properties>
 
     <packaging>jar</packaging>
@@ -33,6 +34,11 @@
             <groupId>com.restfb</groupId>
             <artifactId>restfb</artifactId>
             <version>${restfbVersion}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>${guavaVersion}</version>
         </dependency>
         <dependency>
             <groupId>junit</groupId>

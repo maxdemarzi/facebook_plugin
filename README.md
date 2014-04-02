@@ -13,3 +13,6 @@ Instructions
     curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/install
     curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/get_user   -H "Content-Type: application/json"   -d '{"id":"your fb id",
            "token": "your fb token"}'
+    curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/get_friends   -H "Content-Type: application/json"   -d '{"id":"your fb id",
+           "token": "your fb token"}'
+
