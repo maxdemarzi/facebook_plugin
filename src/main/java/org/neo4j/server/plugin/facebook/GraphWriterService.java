@@ -17,21 +17,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.*;
 
 class GraphWriterService extends AbstractScheduledService {
-    private Logger logger = Logger.getLogger("org.neo4j.server.plugin.facebook");
+    private final static Logger logger = Logger.getLogger(GraphWriterService.class.getName());
     public GraphDatabaseService graphDb;
     public LinkedBlockingQueue<HashMap> toWrite = new LinkedBlockingQueue<>();
 
     protected void runOneIteration() throws Exception {
-        logger.info("Inside runOneIteration");
         Collection<HashMap> writes = new ArrayList<>();
-        toWrite.drainTo(writes);
-        logger.info("Drained writes");
-        for( HashMap write : writes){
-            logger.info("Inside Writes");
-            switch ((GraphWriterServiceAction) write.get("action")) {
-                case CREATE_NODE:
-                    logger.info("Inside Create Node");
-                    try ( Transaction tx = graphDb.beginTx() ) {
+        toWrite.drainTo(writes, 100000);
+        try ( Transaction tx = graphDb.beginTx() ) {
+            for( HashMap write : writes) {
+                switch ((GraphWriterServiceAction) write.get("action")) {
+                    case CREATE_NODE:
                         JsonObject user = (JsonObject)write.get("user");
                         Node userNode = graphDb.createNode();
                         userNode.setProperty( FacebookProperties.ID, user.getString( "uid" ) );
@@ -42,10 +38,10 @@ class GraphWriterService extends AbstractScheduledService {
                         userNode.setProperty( FacebookProperties.PIC_BIG, Optional.fromNullable( user.getString( "pic_big" ) ).or("") );
                         userNode.setProperty( FacebookProperties.PIC_SMALL, Optional.fromNullable( user.getString( "pic_small" ) ).or("") );
                         userNode.addLabel( FacebookLabels.User );
-                        tx.success();
-                        logger.info("TX Succeeded ");
-                    }
+                }
             }
+
+            tx.success();
         }
 
     }

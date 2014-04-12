@@ -14,16 +14,16 @@ Instructions
 
 Import data using the Graph API:
 
-    curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/import_user   -H "Content-Type: application/json"   -d '{"id":"your fb id",
+    curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/import_user -H "Content-Type: application/json"   -d '{"id":"your fb id",
            "token": "your fb token"}'
-    curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/import_friends   -H "Content-Type: application/json"   -d '{"id":"your fb id",
+    curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/import_friends -H "Content-Type: application/json"   -d '{"id":"your fb id",
            "token": "your fb token"}'
-    curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/import_mutual_friends   -H "Content-Type: application/json"   -d '{"id":"your fb id",
+    curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/import_mutual_friends -H "Content-Type: application/json"   -d '{"id":"your fb id",
            "token": "your fb token"}'
 
 Import data using FQL:
 
-    curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/import_user_by_fql   -H "Content-Type: application/json"   -d '{"id":"your fb id",
+    curl -X POST http://localhost:7474/db/data/ext/FacebookPlugin/graphdb/import_user_by_fql -H "Content-Type: application/json"   -d '{"id":"your fb id",
            "token": "your fb token"}'
 
 

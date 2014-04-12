@@ -27,14 +27,13 @@ import java.util.logging.*;
 
 @Description( "An extension to the Neo4j Server for getting all nodes or relationships" )
 public class FacebookPlugin extends ServerPlugin {
-    private Logger logger = Logger.getLogger("org.neo4j.server.plugin.facebook");
+    private final static Logger logger = Logger.getLogger(FacebookPlugin.class.getName());
     ListeningExecutorService service = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(10));
 
     GraphWriterService graphWriterService = new GraphWriterService();
 
     private final PathFinder<Path> SHORTEST_PATH_LEVEL_ONE = GraphAlgoFactory
             .shortestPath( PathExpanders.forType( FacebookRelationshipTypes.FRIENDS ), 1 );
-
 
     private Node getOrCreateNode( GraphDatabaseService graphDb, String id, String token ) {
         Node userNode = IteratorUtil.singleOrNull( graphDb.findNodesByLabelAndProperty( FacebookLabels.User, FacebookProperties.ID, id ) );
@@ -104,6 +103,25 @@ public class FacebookPlugin extends ServerPlugin {
             schema.indexFor( FacebookLabels.User )
                     .on( FacebookProperties.FULL_NAME )
                     .create();
+            schema.constraintFor(FacebookLabels.Place )
+                    .assertPropertyIsUnique("id")
+                    .create();
+            schema.indexFor( FacebookLabels.Place )
+                    .on( FacebookProperties.NAME )
+                    .create();
+            schema.constraintFor(FacebookLabels.Thing )
+                    .assertPropertyIsUnique("id")
+                    .create();
+            schema.indexFor( FacebookLabels.Thing )
+                    .on( FacebookProperties.NAME )
+                    .create();
+            schema.constraintFor(FacebookLabels.Group )
+                    .assertPropertyIsUnique("id")
+                    .create();
+            schema.indexFor( FacebookLabels.Group )
+                    .on( FacebookProperties.NAME )
+                    .create();
+
             tx.success();
         }
 
@@ -181,13 +199,11 @@ public class FacebookPlugin extends ServerPlugin {
                                       @Description( "The Facebook Access Token." )
                                       @Parameter( name = "token", optional = true ) final String token ) throws Exception
     {
-        logger.info("Inside FQLAsync");
         setGraphWriterServiceDatabase(graphDb);
 
         try ( Transaction tx = graphDb.beginTx() ) {
             Node userNode = IteratorUtil.singleOrNull( graphDb.findNodesByLabelAndProperty( FacebookLabels.User, FacebookProperties.ID, id ) );
             if ( userNode == null ) {
-                logger.info("User Not found in index");
                 ListenableFuture<HashMap> action = service.submit(new Callable<HashMap>() {
                     public HashMap call() {
                         return getFacebookUser(id, token);
@@ -195,10 +211,8 @@ public class FacebookPlugin extends ServerPlugin {
                 });
 
                 Futures.addCallback(action, new FutureCallback<HashMap>() {
-                    // we want this handler to run immediately after we get the Facebook User
                     public void onSuccess(HashMap action) {
                         try {
-                            logger.info("Adding toWrite");
                             graphWriterService.toWrite.put(action);
                         } catch (Exception exception) {
                             logger.info("Broke in the callback: " + exception);
