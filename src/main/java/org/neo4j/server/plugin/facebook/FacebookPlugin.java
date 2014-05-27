@@ -18,58 +18,34 @@ import com.restfb.FacebookClient;
 import com.restfb.types.User;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.*;
 
-@Description( "An extension to the Neo4j Server for getting all nodes or relationships" )
+@Description( "An extension to the Neo4j Server for retrieving Facebook Data" )
 public class FacebookPlugin extends ServerPlugin {
-    private final static Logger logger = Logger.getLogger(FacebookPlugin.class.getName());
-    ListeningExecutorService service = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(10));
-
-    GraphWriterService graphWriterService = new GraphWriterService();
+    private final static Logger LOGGER = Logger.getLogger( FacebookPlugin.class.getName() );
+    private static final int NUMBER_OF_THREADS = Runtime.getRuntime().availableProcessors();
+    ListeningExecutorService service = MoreExecutors.listeningDecorator( Executors.newFixedThreadPool( NUMBER_OF_THREADS ) );
 
     private final PathFinder<Path> SHORTEST_PATH_LEVEL_ONE = GraphAlgoFactory
             .shortestPath( PathExpanders.forType( FacebookRelationshipTypes.FRIENDS ), 1 );
 
     private Node getOrCreateNode( GraphDatabaseService graphDb, String id, String token ) {
-        Node userNode = IteratorUtil.singleOrNull( graphDb.findNodesByLabelAndProperty( FacebookLabels.User, FacebookProperties.ID, id ) );
-        if ( userNode == null ) {
-            FacebookClient facebookClient = new DefaultFacebookClient( token );
-            User user = facebookClient.fetchObject( id, User.class, com.restfb.Parameter.with( "fields", "id, name, gender, username" ) );
-            userNode = graphDb.createNode();
-            userNode.setProperty( FacebookProperties.ID, user.getId() );
-            userNode.setProperty( FacebookProperties.FULL_NAME, Optional.fromNullable( user.getName() ).or( "" ) );
-            userNode.setProperty( FacebookProperties.GENDER, Optional.fromNullable( user.getGender() ).or("") );
-            userNode.setProperty( FacebookProperties.USER_NAME, Optional.fromNullable( user.getUsername() ).or("") );
-            userNode.setProperty( FacebookProperties.BIRTHDAY, Optional.fromNullable( user.getBirthday() ).or( "" ) );
-            userNode.addLabel( FacebookLabels.User );
-        }
-        return userNode;
-    }
-
-    // Allow me to send the fields in the SELECT as a parameter with some kind of MAP
-
-    private Node getOrCreateNodeFQL( GraphDatabaseService graphDb, String id, String token ) {
-        Node userNode = null;
+        Node userNode;
         try ( Transaction tx = graphDb.beginTx() ) {
             userNode = IteratorUtil.singleOrNull( graphDb.findNodesByLabelAndProperty( FacebookLabels.User, FacebookProperties.ID, id ) );
             if ( userNode == null ) {
-                FacebookClient facebookClient = new DefaultFacebookClient( token );
-                String query = String.format("SELECT uid, name, sex, birthday_date, relationship_status, pic_big, pic_small FROM user WHERE uid = %s", id);
-                JsonObject user = facebookClient.executeFqlQuery(query, JsonObject.class).get(0);
+                JsonObject user = getFacebookUser( id, token );
 
                 userNode = graphDb.createNode();
                 userNode.setProperty( FacebookProperties.ID, user.getString( "uid" ) );
-                userNode.setProperty( FacebookProperties.FULL_NAME, Optional.fromNullable(user.getString( "name" )).or(""));
-                userNode.setProperty( FacebookProperties.GENDER, Optional.fromNullable( user.getString( "sex" ) ).or("") );
-                userNode.setProperty( FacebookProperties.BIRTHDAY, Optional.fromNullable( user.getString( "birthday_date") ).or("") );
-                userNode.setProperty( FacebookProperties.RELATIONSHIP_STATUS, Optional.fromNullable( user.getString( "relationship_status" ) ).or("") );
-                userNode.setProperty( FacebookProperties.PIC_BIG, Optional.fromNullable( user.getString( "pic_big" ) ).or("") );
-                userNode.setProperty( FacebookProperties.PIC_SMALL, Optional.fromNullable( user.getString( "pic_small" ) ).or("") );
+                userNode.setProperty( FacebookProperties.FULL_NAME, Optional.fromNullable(user.getString( "name" ) ).or( "" ));
+                userNode.setProperty( FacebookProperties.GENDER, Optional.fromNullable( user.getString( "sex" ) ).or( "" ) );
+                userNode.setProperty( FacebookProperties.PIC_BIG, Optional.fromNullable( user.getString( "pic_big" ) ).or( "" ) );
+                userNode.setProperty( FacebookProperties.PIC_SMALL, Optional.fromNullable( user.getString( "pic_small" ) ).or( "" ) );
                 userNode.addLabel( FacebookLabels.User );
                 tx.success();
             }
@@ -77,46 +53,40 @@ public class FacebookPlugin extends ServerPlugin {
         return userNode;
     }
 
-    private HashMap getFacebookUser(String id, String token) {
-        logger.info("Getting Facebook User");
+    private static JsonObject getFacebookUser( String id, String token ) {
         FacebookClient facebookClient = new DefaultFacebookClient( token );
-        String query = String.format("SELECT uid, name, sex, birthday_date, relationship_status, pic_big, pic_small FROM user WHERE uid = %s", id);
-        final JsonObject user = facebookClient.executeFqlQuery(query, JsonObject.class).get(0);
-        logger.info("Got Facebook User");
-        return new HashMap(){{
-            put("action", GraphWriterServiceAction.CREATE_NODE);
-            put("user", user);
-        }};
+        String query = String.format( "SELECT uid, name, sex, pic_big, pic_small FROM user WHERE uid = %s", id );
+        return facebookClient.executeFqlQuery( query, JsonObject.class ).get( 0 );
     }
 
     @Name( "install" )
-    @Description( "Create Indexes and Constraints required for Plugin")
+    @Description( "Create Indexes and Constraints required for Plugin" )
     @PluginTarget( GraphDatabaseService.class )
-    public String install( @Source GraphDatabaseService graphDb) {
+    public String install( @Source GraphDatabaseService graphDb ) {
 
         try ( Transaction tx = graphDb.beginTx() )
         {
             Schema schema = graphDb.schema();
-            schema.constraintFor(FacebookLabels.User )
-                    .assertPropertyIsUnique("id")
+            schema.constraintFor( FacebookLabels.User )
+                    .assertPropertyIsUnique( "id" )
                     .create();
             schema.indexFor( FacebookLabels.User )
                     .on( FacebookProperties.FULL_NAME )
                     .create();
-            schema.constraintFor(FacebookLabels.Place )
-                    .assertPropertyIsUnique("id")
+            schema.constraintFor( FacebookLabels.Place )
+                    .assertPropertyIsUnique( "id" )
                     .create();
             schema.indexFor( FacebookLabels.Place )
                     .on( FacebookProperties.NAME )
                     .create();
-            schema.constraintFor(FacebookLabels.Thing )
-                    .assertPropertyIsUnique("id")
+            schema.constraintFor( FacebookLabels.Thing )
+                    .assertPropertyIsUnique( "id" )
                     .create();
             schema.indexFor( FacebookLabels.Thing )
                     .on( FacebookProperties.NAME )
                     .create();
-            schema.constraintFor(FacebookLabels.Group )
-                    .assertPropertyIsUnique("id")
+            schema.constraintFor( FacebookLabels.Group )
+                    .assertPropertyIsUnique( "id" )
                     .create();
             schema.indexFor( FacebookLabels.Group )
                     .on( FacebookProperties.NAME )
@@ -131,111 +101,51 @@ public class FacebookPlugin extends ServerPlugin {
             schema.awaitIndexesOnline(10, TimeUnit.SECONDS);
             tx.success();
         }
-        setGraphWriterServiceDatabase(graphDb);
-        return "Facebook Plugin is installed!";
-    }
 
-    private void setGraphWriterServiceDatabase(GraphDatabaseService graphDb) {
-        if ( graphWriterService.graphDb == null ) {
-            logger.info("Setting graphWriterService graphDb");
-            graphWriterService.graphDb = graphDb;
-        }
-        if (!graphWriterService.isRunning()){
-            logger.info("Starting graphWriterService");
-            graphWriterService.startAsync();
-            graphWriterService.awaitRunning();
-            logger.info("Started graphWriterService");
-        }
+        return "Facebook Plugin is installed!";
     }
 
     @Name( "import_user" )
     @Description( "Import Facebook User" )
     @PluginTarget( GraphDatabaseService.class )
-    public Representation getUser( @Source GraphDatabaseService graphDb,
-                         @Description( "The Facebook User Id to Retrieve." )
-                         @Parameter( name = "id" ) String id,
-                         @Description( "The Facebook Access Token." )
-                         @Parameter( name = "token", optional = true ) String token )
-    {
-        Representation representation;
-        try ( Transaction tx = graphDb.beginTx() ) {
-            Node userNode = getOrCreateNode( graphDb, id, token );
-            tx.success();
-            representation = new NodeRepresentation( userNode );
-
-        }  catch (Exception e) {
-            representation = new ExceptionRepresentation(e);
-        }
-        return representation;
-    }
-
-    @Name( "import_user_by_fql" )
-    @Description( "Import Facebook User" )
-    @PluginTarget( GraphDatabaseService.class )
-    public Representation getUserFQL( @Source GraphDatabaseService graphDb,
+    public Representation importUser( final @Source GraphDatabaseService graphDb,
                                    @Description( "The Facebook User Id to Retrieve." )
                                    @Parameter( name = "id" ) String id,
                                    @Description( "The Facebook Access Token." )
                                    @Parameter( name = "token", optional = true ) String token )
     {
         Representation representation;
-        try ( Transaction tx = graphDb.beginTx() ) {
-            Node userNode = getOrCreateNodeFQL(graphDb, id, token);
-            tx.success();
+        try {
+            Node userNode = getOrCreateNode(graphDb, id, token);
             representation = new NodeRepresentation( userNode );
-
-        }  catch (Exception e) {
-            representation = new ExceptionRepresentation(e);
+        }  catch ( Exception e ) {
+            representation = new ExceptionRepresentation( e );
         }
         return representation;
     }
 
-    @Name( "import_user_by_fql_async" )
-    @Description( "Import Facebook User" )
+    @Name( "import_user_async" )
+    @Description( "Import Facebook User Asynchronously" )
     @PluginTarget( GraphDatabaseService.class )
-    public String getUserFQLAsync( @Source GraphDatabaseService graphDb,
+    public Representation importUserAsync( final @Source GraphDatabaseService graphDb,
                                       @Description( "The Facebook User Id to Retrieve." )
                                       @Parameter( name = "id" ) final String id,
                                       @Description( "The Facebook Access Token." )
                                       @Parameter( name = "token", optional = true ) final String token ) throws Exception
     {
-        setGraphWriterServiceDatabase(graphDb);
-
-        try ( Transaction tx = graphDb.beginTx() ) {
-            Node userNode = IteratorUtil.singleOrNull( graphDb.findNodesByLabelAndProperty( FacebookLabels.User, FacebookProperties.ID, id ) );
-            if ( userNode == null ) {
-                ListenableFuture<HashMap> action = service.submit(new Callable<HashMap>() {
-                    public HashMap call() {
-                        return getFacebookUser(id, token);
-                    }
-                });
-
-                Futures.addCallback(action, new FutureCallback<HashMap>() {
-                    public void onSuccess(HashMap action) {
-                        try {
-                            graphWriterService.toWrite.put(action);
-                        } catch (Exception exception) {
-                            logger.info("Broke in the callback: " + exception);
-                        }
-
-                    }
-
-                    public void onFailure(Throwable thrown) {
-                        // TO-DO: Log the error?
-                        logger.info("On Failure...");
-                    }
-                });
-
+        service.submit( new Callable<Node>() {
+            public Node call() {
+                return getOrCreateNode( graphDb, id, token );
             }
-        }
+        });
 
-        return "Import User for " + id + " with token " + token + " received.";
+        return ValueRepresentation.string( "Import User for " + id + " with token " + token + " received." );
     }
 
     @Name( "import_friends" )
     @Description( "Import Facebook Friends" )
     @PluginTarget( GraphDatabaseService.class )
-    public Representation getFriends( @Source GraphDatabaseService graphDb,
+    public Representation importFriends( @Source GraphDatabaseService graphDb,
                                                               @Description( "The Facebook User Id to Retrieve." )
                                                               @Parameter( name = "id" ) String id,
                                                               @Description( "The Facebook Access Token." )
@@ -243,31 +153,75 @@ public class FacebookPlugin extends ServerPlugin {
     {
         Representation representation;
         ArrayList<Representation> friends = new ArrayList();
+        Node userNode = getOrCreateNode( graphDb, id, token );
 
         try ( Transaction tx = graphDb.beginTx() ) {
-            Node userNode = getOrCreateNode( graphDb, id, token );
-
             FacebookClient facebookClient = new DefaultFacebookClient( token );
-            Connection<User> myFriends = facebookClient.fetchConnection("me/friends", User.class);
+            Connection<User> myFriends = facebookClient.fetchConnection( "me/friends", User.class);
 
                 for ( List<User> myFriendsConnectionPage : myFriends ) {
                     for ( User friend : myFriendsConnectionPage ) {
                         Node friendNode = getOrCreateNode( graphDb, friend.getId(), token );
-                        if (SHORTEST_PATH_LEVEL_ONE.findSinglePath( friendNode, userNode ) == null ) {
+                        if ( SHORTEST_PATH_LEVEL_ONE.findSinglePath( friendNode, userNode ) == null ) {
                             userNode.createRelationshipTo( friendNode, FacebookRelationshipTypes.FRIENDS );
                         }
-                        friends.add(new NodeRepresentation(friendNode));
+                        friends.add( new NodeRepresentation( friendNode ) );
                     }
                 }
 
             tx.success();
-            representation = new ListRepresentation(RepresentationType.NODE, friends );
+            representation = new ListRepresentation( RepresentationType.NODE, friends );
  
-        }  catch (Exception e) {
-            representation = new ExceptionRepresentation(e);
+        }  catch ( Exception e ) {
+            representation = new ExceptionRepresentation( e );
         }
         return representation;
     }
+
+    @Name( "import_friends_async" )
+    @Description( "Import Facebook Friends Asynchronously" )
+    @PluginTarget( GraphDatabaseService.class )
+    public Representation importFriendsAsync( final @Source GraphDatabaseService graphDb,
+                                         @Description( "The Facebook User Id to Retrieve." )
+                                         final @Parameter( name = "id" ) String id,
+                                         @Description( "The Facebook Access Token." )
+                                         final @Parameter( name = "token", optional = true ) String token )
+    {
+        service.submit( new Callable<ArrayList<Node>>() {
+            public ArrayList<Node> call() {
+                return getOrCreateFriends( graphDb, id, token );
+            }
+        });
+
+        return ValueRepresentation.string( "Importing Friends for " + id + " with token " + token + " received." );
+    }
+
+    private ArrayList<Node> getOrCreateFriends(GraphDatabaseService graphDb, String id, String token) {
+        ArrayList<Node> friends = new ArrayList();
+        Node userNode = getOrCreateNode( graphDb, id, token );
+
+        try ( Transaction tx = graphDb.beginTx() ) {
+            FacebookClient facebookClient = new DefaultFacebookClient( token );
+            Connection<User> myFriends = facebookClient.fetchConnection( "me/friends", User.class);
+
+            for ( List<User> myFriendsConnectionPage : myFriends ) {
+                for ( User friend : myFriendsConnectionPage ) {
+                    Node friendNode = getOrCreateNode( graphDb, friend.getId(), token );
+                    if ( SHORTEST_PATH_LEVEL_ONE.findSinglePath( friendNode, userNode ) == null ) {
+                        userNode.createRelationshipTo( friendNode, FacebookRelationshipTypes.FRIENDS );
+                    }
+                    friends.add( friendNode );
+                }
+            }
+
+            tx.success();
+
+        }  catch (Exception e) {
+            LOGGER.log( Level.SEVERE, e.toString(), e );
+        }
+        return friends;
+    }
+
 
     @Name( "import_mutual_friends" )
     @Description( "Import Mutual Friends of Facebook Friends" )
@@ -284,12 +238,12 @@ public class FacebookPlugin extends ServerPlugin {
             Node userNode = getOrCreateNode( graphDb, id, token );
 
             for ( Relationship friendRel : userNode.getRelationships( FacebookRelationshipTypes.FRIENDS ) ){
-                Node friendNode = friendRel.getOtherNode(userNode);
-                String friendId = (String)friendNode.getProperty(FacebookProperties.ID);
+                Node friendNode = friendRel.getOtherNode( userNode );
+                String friendId = (String)friendNode.getProperty( FacebookProperties.ID);
 
                 try {
                     FacebookClient facebookClient = new DefaultFacebookClient( token );
-                    Connection<User> myFriends = facebookClient.fetchConnection("me/mutualfriends/" + friendId, User.class);
+                    Connection<User> myFriends = facebookClient.fetchConnection( "me/mutualfriends/" + friendId, User.class );
 
                     for ( List<User> myFriendsConnectionPage : myFriends ) {
                         for ( User friend : myFriendsConnectionPage ) {
@@ -299,16 +253,16 @@ public class FacebookPlugin extends ServerPlugin {
                             }
                         }
                     }
-                } catch (FacebookException e) {
-                    System.out.println(e);
+                } catch ( FacebookException e) {
+                    LOGGER.log( Level.SEVERE, e.toString(), e );
                 }
 
             }
             tx.success();
-            representation = ValueRepresentation.string("Imported Mutual Friends");
+            representation = ValueRepresentation.string( "Imported Mutual Friends" );
 
-        }  catch (Exception e) {
-            representation = new ExceptionRepresentation(e);
+        }  catch ( Exception e ) {
+            representation = new ExceptionRepresentation( e );
         }
         return representation;
     }
